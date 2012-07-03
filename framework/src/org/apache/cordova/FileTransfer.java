@@ -83,7 +83,7 @@ public class FileTransfer extends Plugin {
         }
 
         if (action.equals("upload")) {
-            return upload(source, target, args);
+            return upload(source, target, args, callbackId);
         } else if (action.equals("download")) {
             return download(source, target);
         } else {
@@ -96,6 +96,7 @@ public class FileTransfer extends Plugin {
      * @param source        Full path of the file on the file system
      * @param target        URL of the server to receive the file
      * @param args          JSON Array of args
+     * @param callbackId    callback id for optional progress reports
      *
      * args[2] fileKey       Name of file request parameter
      * args[3] fileName      File name to be used on server
@@ -103,7 +104,7 @@ public class FileTransfer extends Plugin {
      * args[5] params        key:value pairs of user-defined parameters
      * @return FileUploadResult containing result of upload request
      */
-    private PluginResult upload(String source, String target, JSONArray args) {
+    private PluginResult upload(String source, String target, JSONArray args, String callbackId) {
         Log.d(LOG_TAG, "upload " + source + " to " +  target);
 
         HttpURLConnection conn = null;
@@ -136,6 +137,7 @@ public class FileTransfer extends Plugin {
             long totalBytes;
             byte[] buffer;
             int maxBufferSize = 8096;
+            boolean progress;
 
             //------------------ CLIENT REQUEST
             // open a URL connection to the server
@@ -254,6 +256,15 @@ public class FileTransfer extends Plugin {
             bytesRead = fileInputStream.read(buffer, 0, bufferSize);
             totalBytes = 0;
 
+            try {
+              progress = params.getBoolean("progress");
+            } catch (JSONException e1) {
+              progress = false;
+            }
+            // -1 indicates in-progress upload
+            result.setResponseCode(-1);
+            result.setResponse("");
+
             while (bytesRead > 0) {
                 totalBytes += bytesRead;
                 result.setBytesSent(totalBytes);
@@ -261,6 +272,12 @@ public class FileTransfer extends Plugin {
                 bytesAvailable = fileInputStream.available();
                 bufferSize = Math.min(bytesAvailable, maxBufferSize);
                 bytesRead = fileInputStream.read(buffer, 0, bufferSize);
+                if (progress) {
+                    Log.d(LOG_TAG, "****** About to send a progress result from upload");
+                    PluginResult progressResult = new PluginResult(PluginResult.Status.OK, result.toJSONObject());
+                    progressResult.setKeepCallback(true);
+                    success(progressResult, callbackId);
+                }
             }
 
             // send multipart form data necesssary after file data...
