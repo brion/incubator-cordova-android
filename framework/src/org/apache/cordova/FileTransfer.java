@@ -32,6 +32,7 @@ import java.net.URL;
 import java.net.URLDecoder;
 import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
+import java.util.HashMap;
 import java.util.Iterator;
 
 import javax.net.ssl.HostnameVerifier;
@@ -63,6 +64,8 @@ public class FileTransfer extends Plugin {
     public static int INVALID_URL_ERR = 2;
     public static int CONNECTION_ERR = 3;
 
+	private static HashMap abortTriggered = new HashMap();
+
     private SSLSocketFactory defaultSSLSocketFactory = null;
     private HostnameVerifier defaultHostnameVerifier = null;
 
@@ -85,6 +88,8 @@ public class FileTransfer extends Plugin {
             return upload(source, target, args, callbackId);
         } else if (action.equals("download")) {
             return download(source, target);
+		} else if (action.equals("abort")) {
+			return abort(args);
         } else {
             return new PluginResult(PluginResult.Status.INVALID_ACTION);
         }
@@ -104,6 +109,12 @@ public class FileTransfer extends Plugin {
      * @return FileUploadResult containing result of upload request
      */
     private PluginResult upload(String source, String target, JSONArray args, String callbackId) {
+		class AbortException extends Exception {
+			public AbortException(String str) {
+				super(str);
+			}
+		}
+
         Log.d(LOG_TAG, "upload " + source + " to " +  target);
 
         HttpURLConnection conn = null;
@@ -116,6 +127,7 @@ public class FileTransfer extends Plugin {
             if (params == null) params = new JSONObject();
             boolean trustEveryone = args.optBoolean(6);
             boolean chunkedMode = args.optBoolean(7) || args.isNull(7); //Always use chunked mode unless set to false as per API
+			String objectId = args.getString(8);
 
             Log.d(LOG_TAG, "fileKey: " + fileKey);
             Log.d(LOG_TAG, "fileName: " + fileName);
@@ -123,6 +135,7 @@ public class FileTransfer extends Plugin {
             Log.d(LOG_TAG, "params: " + params);
             Log.d(LOG_TAG, "trustEveryone: " + trustEveryone);
             Log.d(LOG_TAG, "chunkedMode: " + chunkedMode);
+            Log.d(LOG_TAG, "objectId: " + objectId);
 
             // Create return object
             FileUploadResult result = new FileUploadResult();
@@ -136,7 +149,6 @@ public class FileTransfer extends Plugin {
             long totalBytes;
             byte[] buffer;
             int maxBufferSize = 8096;
-            boolean progress;
 
             //------------------ CLIENT REQUEST
             // open a URL connection to the server
@@ -257,14 +269,10 @@ public class FileTransfer extends Plugin {
             bytesRead = fileInputStream.read(buffer, 0, bufferSize);
             totalBytes = 0;
 
-            try {
-              progress = params.getBoolean("progress");
-            } catch (JSONException e1) {
-              progress = false;
-            }
             // -1 indicates in-progress upload
             result.setResponseCode(-1);
             result.setResponse("");
+			result.setObjectId(objectId);
 
             while (bytesRead > 0) {
                 totalBytes += bytesRead;
@@ -273,12 +281,18 @@ public class FileTransfer extends Plugin {
                 bytesAvailable = fileInputStream.available();
                 bufferSize = Math.min(bytesAvailable, maxBufferSize);
                 bytesRead = fileInputStream.read(buffer, 0, bufferSize);
-                if (progress) {
+                if (objectId != null) {
                     Log.d(LOG_TAG, "****** About to send a progress result from upload");
                     PluginResult progressResult = new PluginResult(PluginResult.Status.OK, result.toJSONObject());
                     progressResult.setKeepCallback(true);
                     success(progressResult, callbackId);
                 }
+				synchronized (abortTriggered) {
+					if (objectId != null && abortTriggered.containsKey(objectId)) {
+						abortTriggered.remove(objectId);
+						throw new AbortException("upload aborted");
+					}
+				}
             }
 
             // send multipart form data necesssary after file data...
@@ -336,6 +350,9 @@ public class FileTransfer extends Plugin {
         } catch (JSONException e) {
             Log.e(LOG_TAG, e.getMessage(), e);
             return new PluginResult(PluginResult.Status.JSON_EXCEPTION);
+		} catch (AbortException e) {
+            Log.e(LOG_TAG, e.getMessage(), e);
+            return new PluginResult(PluginResult.Status.ERROR);
         } catch (Throwable t) {
             // Shouldn't happen, but will
             JSONObject error = createFileTransferError(CONNECTION_ERR, source, target, conn);
@@ -579,4 +596,26 @@ public class FileTransfer extends Plugin {
 
         return file;
     }
+
+    /**
+     * Abort an ongoing upload or download.
+     *
+     * @param args          args
+     */
+    private PluginResult abort(JSONArray args) {
+		String objectId;
+		try {
+			objectId = args.getString(0);
+        } catch (JSONException e) {
+            Log.d(LOG_TAG, "Missing objectId");
+            return new PluginResult(PluginResult.Status.JSON_EXCEPTION, "Missing objectId");
+        }
+		synchronized (abortTriggered) {
+			if (abortTriggered == null) {
+				abortTriggered = new HashMap();
+			}
+			abortTriggered.put(objectId, objectId);
+		}
+        return new PluginResult(PluginResult.Status.OK);
+	}
 }
