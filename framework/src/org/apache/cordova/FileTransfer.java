@@ -74,20 +74,22 @@ public class FileTransfer extends Plugin {
     */
     @Override
     public PluginResult execute(String action, JSONArray args, String callbackId) {
-        String source = null;
-        String target = null;
-        try {
-            source = URLDecoder.decode(args.getString(0));
-            target = args.getString(1);
-        } catch (JSONException e) {
-            Log.d(LOG_TAG, "Missing source or target");
-            return new PluginResult(PluginResult.Status.JSON_EXCEPTION, "Missing source or target");
-        }
+		if (action.equals("upload") || action.equals("download")) {
+	        String source = null;
+	        String target = null;
+	        try {
+	            source = URLDecoder.decode(args.getString(0));
+	            target = args.getString(1);
+	        } catch (JSONException e) {
+	            Log.d(LOG_TAG, "Missing source or target");
+	            return new PluginResult(PluginResult.Status.JSON_EXCEPTION, "Missing source or target");
+	        }
 
-        if (action.equals("upload")) {
-            return upload(source, target, args, callbackId);
-        } else if (action.equals("download")) {
-            return download(source, target);
+	        if (action.equals("upload")) {
+	            return upload(source, target, args, callbackId);
+	        } else {
+	            return download(source, target);
+			}
 		} else if (action.equals("abort")) {
 			return abort(args);
         } else {
