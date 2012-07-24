@@ -63,6 +63,7 @@ public class FileTransfer extends Plugin {
     public static int FILE_NOT_FOUND_ERR = 1;
     public static int INVALID_URL_ERR = 2;
     public static int CONNECTION_ERR = 3;
+    public static int ABORTED_ERR = 4;
 
 	private static HashMap abortTriggered = new HashMap();
 
@@ -353,8 +354,9 @@ public class FileTransfer extends Plugin {
             Log.e(LOG_TAG, e.getMessage(), e);
             return new PluginResult(PluginResult.Status.JSON_EXCEPTION);
 		} catch (AbortException e) {
-            Log.e(LOG_TAG, e.getMessage(), e);
-            return new PluginResult(PluginResult.Status.ERROR);
+            JSONObject error = createFileTransferError(ABORTED_ERR, source, target, conn);
+            Log.e(LOG_TAG, error.toString(), e);
+            return new PluginResult(PluginResult.Status.ERROR, error);
         } catch (Throwable t) {
             // Shouldn't happen, but will
             JSONObject error = createFileTransferError(CONNECTION_ERR, source, target, conn);
