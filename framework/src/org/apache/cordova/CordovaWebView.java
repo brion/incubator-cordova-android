@@ -186,8 +186,9 @@ public class CordovaWebView extends WebView {
         settings.setJavaScriptCanOpenWindowsAutomatically(true);
         settings.setLayoutAlgorithm(LayoutAlgorithm.NORMAL);
 
-        //Set the nav dump for HTC
-        settings.setNavDump(true);
+        //Set the nav dump for HTC 2.x devices (disabling for ICS/Jellybean)
+        if(android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.HONEYCOMB)
+            settings.setNavDump(true);
 
         // Enable database
         settings.setDatabaseEnabled(true);
@@ -596,7 +597,12 @@ public class CordovaWebView extends WebView {
      *      <log level="DEBUG" />
      */
     private void loadConfiguration() {
-        int id = getResources().getIdentifier("cordova", "xml", this.cordova.getActivity().getPackageName());
+        int id = getResources().getIdentifier("config", "xml", this.cordova.getActivity().getPackageName());
+        if(id == 0)
+        {
+            id = getResources().getIdentifier("cordova", "xml", this.cordova.getActivity().getPackageName());   
+            Log.i("CordovaLog", "config.xml missing, reverting to cordova.xml");
+        }
         if (id == 0) {
             LOG.i("CordovaLog", "cordova.xml missing. Ignoring...");
             return;
