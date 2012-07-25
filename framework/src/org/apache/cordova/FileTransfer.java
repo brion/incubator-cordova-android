@@ -615,9 +615,6 @@ public class FileTransfer extends Plugin {
             return new PluginResult(PluginResult.Status.JSON_EXCEPTION, "Missing objectId");
         }
 		synchronized (abortTriggered) {
-			if (abortTriggered == null) {
-				abortTriggered = new HashMap();
-			}
 			abortTriggered.put(objectId, objectId);
 		}
         return new PluginResult(PluginResult.Status.OK);
