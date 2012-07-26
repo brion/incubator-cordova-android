@@ -89,7 +89,7 @@ public class FileTransfer extends Plugin {
 	        if (action.equals("upload")) {
 	            return upload(source, target, args, callbackId);
 	        } else {
-	            return download(source, target);
+	            return download(source, target, args, callbackId);
 			}
 		} else if (action.equals("abort")) {
 			return abort(args);
@@ -142,6 +142,7 @@ public class FileTransfer extends Plugin {
 
             // Create return object
             FileUploadResult result = new FileUploadResult();
+            FileProgressResult progress = new FileProgressResult();
 
             // Get a input stream of the file on the phone
             FileInputStream fileInputStream = (FileInputStream) getPathFromUri(source);
@@ -272,11 +273,6 @@ public class FileTransfer extends Plugin {
             bytesRead = fileInputStream.read(buffer, 0, bufferSize);
             totalBytes = 0;
 
-            // -1 indicates in-progress upload
-            result.setResponseCode(-1);
-            result.setResponse("");
-			result.setObjectId(objectId);
-
             while (bytesRead > 0) {
                 totalBytes += bytesRead;
                 result.setBytesSent(totalBytes);
@@ -285,8 +281,11 @@ public class FileTransfer extends Plugin {
                 bufferSize = Math.min(bytesAvailable, maxBufferSize);
                 bytesRead = fileInputStream.read(buffer, 0, bufferSize);
                 if (objectId != null) {
+                	// Only send progress callbacks if the JS code sent us an object ID,
+                	// so we don't spam old versions with unrecognized callbacks.
                     Log.d(LOG_TAG, "****** About to send a progress result from upload");
-                    PluginResult progressResult = new PluginResult(PluginResult.Status.OK, result.toJSONObject());
+	                progress.setLoaded(totalBytes);
+                    PluginResult progressResult = new PluginResult(PluginResult.Status.OK, progress.toJSONObject());
                     progressResult.setKeepCallback(true);
                     success(progressResult, callbackId);
                 }
@@ -474,11 +473,17 @@ public class FileTransfer extends Plugin {
      * @param target      	Full path of the file on the file system
      * @return JSONObject 	the downloaded file
      */
-    private PluginResult download(String source, String target) {
+    private PluginResult download(String source, String target, JSONArray args, String callbackId) {
+		class AbortException extends Exception {
+			public AbortException(String str) {
+				super(str);
+			}
+		}
         Log.d(LOG_TAG, "download " + source + " to " +  target);
 
         HttpURLConnection connection = null;
         try {
+			String objectId = args.getString(2);
             File file = getFileFromPath(target);
 
             // create needed directories
@@ -509,12 +514,30 @@ public class FileTransfer extends Plugin {
                 InputStream inputStream = connection.getInputStream();
                 byte[] buffer = new byte[1024];
                 int bytesRead = 0;
+                long totalBytes = 0;
+                FileProgressResult progress = new FileProgressResult();
 
                 FileOutputStream outputStream = new FileOutputStream(file);
 
                 // write bytes to file
                 while ((bytesRead = inputStream.read(buffer)) > 0) {
                     outputStream.write(buffer, 0, bytesRead);
+                    totalBytes += bytesRead;
+		            if (objectId != null) {
+		            	// Only send progress callbacks if the JS code sent us an object ID,
+		            	// so we don't spam old versions with unrecognized callbacks.
+		                Log.d(LOG_TAG, "****** About to send a progress result from download");
+			            progress.setLoaded(totalBytes);
+		                PluginResult progressResult = new PluginResult(PluginResult.Status.OK, progress.toJSONObject());
+		                progressResult.setKeepCallback(true);
+		                success(progressResult, callbackId);
+		            }
+					synchronized (abortTriggered) {
+						if (objectId != null && abortTriggered.containsKey(objectId)) {
+							abortTriggered.remove(objectId);
+							throw new AbortException("download aborted");
+						}
+					}
                 }
 
                 outputStream.close();
