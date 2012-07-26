@@ -70,4 +70,12 @@ public class FileUploadResult {
                 ",response:" + JSONObject.quote(response) +
             	",objectId:" + JSONObject.quote(objectId) + "}");
     }
+
+    public JSONObject toJSONProgressObject() throws JSONException {
+        return new JSONObject(
+                "{loaded:" + bytesSent +
+                ",total:0" +
+                ",lengthComputable:false" +
+            	",objectId:" + JSONObject.quote(objectId) + "}");
+    }
 }
